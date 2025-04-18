@@ -10,6 +10,7 @@ bool exportImage(unsigned char* pixelData, int width,int height, QString archivo
 unsigned int* loadSeedMasking(const char* nombreArchivo, int &seed, int &n_pixels);
 unsigned char* xorImages(unsigned char* img1, unsigned char* img2, int totalBytes);
 void rotateBits(unsigned char* data, int totalBytes, int n, bool derecha);
+void shiftBits(unsigned char* data, int totalBytes, int n, bool derecha);
 
 int main()
 {
@@ -44,6 +45,10 @@ int main()
     // Aplicar rotación de bits a la derecha (por ejemplo, 3 bits)
     rotateBits(xorResult, totalBytes, 3, true);
     exportImage(xorResult, width, height, "XOR_Rotada.bmp");
+
+    // Aplicar desplazamiento de bits a la izquierda (por ejemplo, 2 bits)
+    shiftBits(xorResult, totalBytes, 2, false);
+    exportImage(xorResult, width, height, "XOR_Rotada_ShiftIzq.bmp");
 
     delete[] distortionData;
     delete[] xorResult;
@@ -181,6 +186,18 @@ void rotateBits(unsigned char* data, int totalBytes, int n, bool derecha) {
             data[i] = (byte >> n) | (byte << (8 - n));
         } else {
             data[i] = (byte << n) | (byte >> (8 - n));
+        }
+    }
+}
+
+void shiftBits(unsigned char* data, int totalBytes, int n, bool derecha) {
+    if (data == nullptr || n < 1 || n >= 8) return;
+
+    for (int i = 0; i < totalBytes; ++i) {
+        if (derecha) {
+            data[i] = data[i] >> n;
+        } else {
+            data[i] = data[i] << n;
         }
     }
 }
