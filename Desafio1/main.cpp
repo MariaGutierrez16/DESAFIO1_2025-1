@@ -6,14 +6,13 @@
 using namespace std;
 
 unsigned char* loadPixels(QString input, int &width, int &height);
-bool exportImage(unsigned char* pixelData, int width,int height, QString archivoSalida);
+bool exportImage(unsigned char* pixelData, int width, int height, QString archivoSalida);
 unsigned int* loadSeedMasking(const char* nombreArchivo, int &seed, int &n_pixels);
 unsigned char* xorImages(unsigned char* img1, unsigned char* img2, int totalBytes);
 void rotateBits(unsigned char* data, int totalBytes, int n, bool derecha);
-void shiftBits(unsigned char* data, int totalBytes, int n, bool derecha);
+bool compareImages(unsigned char* img1, unsigned char* img2, int totalBytes);
 
-int main()
-{
+int main() {
     QString archivoEntrada = "I_O.bmp";
     QString archivoSalida = "I_D.bmp";
 
@@ -26,7 +25,7 @@ int main()
         return -1;
     }
 
-    // Cargar segunda imagen: imagen de distorsión (IM.bmp)
+    // Cargar imagen de distorsión (IM.bmp)
     QString archivoDistorsion = "IM.bmp";
     int width2 = 0, height2 = 0;
     unsigned char* distortionData = loadPixels(archivoDistorsion, width2, height2);
@@ -42,18 +41,25 @@ int main()
     unsigned char* xorResult = xorImages(pixelData, distortionData, totalBytes);
     exportImage(xorResult, width, height, "XOR.bmp");
 
+    // Comparar después de XOR
+    if (compareImages(xorResult, pixelData, totalBytes)) {
+        cout << "Las imágenes coinciden después de XOR." << endl;
+    } else {
+        cout << "Las imágenes no coinciden después de XOR." << endl;
+    }
+
     // Aplicar rotación de bits a la derecha (por ejemplo, 3 bits)
     rotateBits(xorResult, totalBytes, 3, true);
     exportImage(xorResult, width, height, "XOR_Rotada.bmp");
 
-    // Aplicar desplazamiento de bits a la izquierda (por ejemplo, 2 bits)
-    shiftBits(xorResult, totalBytes, 2, false);
-    exportImage(xorResult, width, height, "XOR_Rotada_ShiftIzq.bmp");
+    // Comparar después de rotación
+    if (compareImages(xorResult, pixelData, totalBytes)) {
+        cout << "Las imágenes coinciden después de rotación." << endl;
+    } else {
+        cout << "Las imágenes no coinciden después de rotación." << endl;
+    }
 
-    delete[] distortionData;
-    delete[] xorResult;
-
-    // Simulación de modificación RGB artificial (puede comentarse si no se desea)
+    // Modificar la imagen original artificialmente
     for (int i = 0; i < width * height * 3; i += 3) {
         pixelData[i] = i % 256;
         pixelData[i + 1] = i % 256;
@@ -61,10 +67,10 @@ int main()
     }
 
     bool exportI = exportImage(pixelData, width, height, archivoSalida);
-    cout << exportI << endl;
+    cout << "Imagen modificada exportada: " << exportI << endl;
 
-    delete[] pixelData;
-    pixelData = nullptr;
+    delete[] distortionData;
+    delete[] xorResult;
 
     int seed = 0;
     int n_pixels = 0;
@@ -110,7 +116,7 @@ unsigned char* loadPixels(QString input, int &width, int &height){
     return pixelData;
 }
 
-bool exportImage(unsigned char* pixelData, int width,int height, QString archivoSalida){
+bool exportImage(unsigned char* pixelData, int width, int height, QString archivoSalida){
     QImage outputImage(width, height, QImage::Format_RGB888);
 
     for (int y = 0; y < height; ++y) {
@@ -158,7 +164,7 @@ unsigned int* loadSeedMasking(const char* nombreArchivo, int &seed, int &n_pixel
 
     archivo.close();
     cout << "Semilla: " << seed << endl;
-    cout << "Cantidad de píxeles leídos: " << n_pixels << endl;
+    cout << "Cantidad de pixeles leidos: " << n_pixels << endl;
 
     return RGB;
 }
@@ -190,14 +196,11 @@ void rotateBits(unsigned char* data, int totalBytes, int n, bool derecha) {
     }
 }
 
-void shiftBits(unsigned char* data, int totalBytes, int n, bool derecha) {
-    if (data == nullptr || n < 1 || n >= 8) return;
-
+bool compareImages(unsigned char* img1, unsigned char* img2, int totalBytes) {
     for (int i = 0; i < totalBytes; ++i) {
-        if (derecha) {
-            data[i] = data[i] >> n;
-        } else {
-            data[i] = data[i] << n;
+        if (img1[i] != img2[i]) {
+            return false;
         }
     }
+    return true;
 }
