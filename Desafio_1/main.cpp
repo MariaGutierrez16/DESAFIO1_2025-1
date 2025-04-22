@@ -6,59 +6,72 @@
 using namespace std;
 
 unsigned char* loadPixels(QString input, int &width, int &height);
-bool exportImage(unsigned char* pixelData, int width, int height, QString archivoSalida);
+bool exportImage(unsigned char* pixelData, int width,int height, QString archivoSalida);
 unsigned int* loadSeedMasking(const char* nombreArchivo, int &seed, int &n_pixels);
 unsigned char* xorImages(unsigned char* img1, unsigned char* img2, int totalBytes);
+unsigned char rotarDerecha(unsigned char byte, int n);
 
 int main()
 {
-    QString archivoOriginal = "I_O.BMP";
-    QString archivoModificada = "I_M.BMP";
-    QString archivoSalida = "I_D.BMP";
+    QString archivoEntrada = "I_O.bmp";
+    QString archivoSalida = "I_D.bmp";
 
-    int width = 0, height = 0;
-    unsigned char* originalData = loadPixels(archivoOriginal, width, height);
-    if (originalData == nullptr) {
+    int height = 0;
+    int width = 0;
+
+    unsigned char *pixelData = loadPixels(archivoEntrada, width, height);
+    if (pixelData == nullptr) {
         cout << "No se pudo cargar la imagen original." << endl;
         return -1;
     }
 
+    // Cargar imagen de distorsión (I_M.bmp)
+    QString archivoDistorsion = "I_M.bmp";
     int width2 = 0, height2 = 0;
-    unsigned char* modifiedData = loadPixels(archivoModificada, width2, height2);
+    unsigned char* distortionData = loadPixels(archivoDistorsion, width2, height2);
 
-    if (width != width2 || height != height2 || modifiedData == nullptr) {
-        cout << "Las imágenes no tienen las mismas dimensiones o I_M.BMP no se pudo cargar." << endl;
-        delete[] modifiedData;
-        delete[] originalData;
+    if (width != width2 || height != height2 || distortionData == nullptr) {
+        cout << "Las imágenes no tienen las mismas dimensiones o I_M.bmp no se pudo cargar." << endl;
+        delete[] distortionData;
+        delete[] pixelData;
         return -1;
     }
 
     int totalBytes = width * height * 3;
-    unsigned char* maskData = xorImages(originalData, modifiedData, totalBytes);
-    exportImage(maskData, width, height, "M.BMP");
+    unsigned char* xorResult = xorImages(pixelData, distortionData, totalBytes);
+    exportImage(xorResult, width, height, "XOR.bmp");
 
-    exportImage(maskData, width, height, "M_Rotada.BMP");
+    // Aplicar rotación de bits a la derecha (3 bits)
+    int rotacion = 3;
+    unsigned char* xorRotado = new unsigned char[totalBytes];
 
-    delete[] modifiedData;
-    delete[] maskData;
+    for (int i = 0; i < totalBytes; ++i) {
+        xorRotado[i] = rotarDerecha(xorResult[i], rotacion);
+    }
+
+    exportImage(xorRotado, width, height, "XOR_Rotada.bmp");
+
+    delete[] xorRotado;
+    delete[] distortionData;
+    delete[] xorResult;
 
     // Simulación de modificación RGB artificial (puede comentarse si no se desea)
     for (int i = 0; i < width * height * 3; i += 3) {
-        originalData[i] = i % 256;
-        originalData[i + 1] = i % 256;
-        originalData[i + 2] = i % 256;
+        pixelData[i] = i % 256;
+        pixelData[i + 1] = i % 256;
+        pixelData[i + 2] = i % 256;
     }
 
-    bool exportI = exportImage(originalData, width, height, archivoSalida);
+    bool exportI = exportImage(pixelData, width, height, archivoSalida);
     cout << exportI << endl;
 
-    delete[] originalData;
-    originalData = nullptr;
+    delete[] pixelData;
+    pixelData = nullptr;
 
     int seed = 0;
     int n_pixels = 0;
 
-    unsigned int* maskingData = loadSeedMasking("M1.txt", seed, n_pixels);
+    unsigned int *maskingData = loadSeedMasking("M1.txt", seed, n_pixels);
     if (maskingData == nullptr) {
         cout << "No se pudieron cargar los datos de enmascaramiento." << endl;
         return -1;
@@ -77,7 +90,7 @@ int main()
     return 0;
 }
 
-unsigned char* loadPixels(QString input, int &width, int &height) {
+unsigned char* loadPixels(QString input, int &width, int &height){
     QImage imagen(input);
     if (imagen.isNull()) {
         cout << "Error: No se pudo cargar la imagen BMP." << std::endl;
@@ -99,7 +112,7 @@ unsigned char* loadPixels(QString input, int &width, int &height) {
     return pixelData;
 }
 
-bool exportImage(unsigned char* pixelData, int width, int height, QString archivoSalida) {
+bool exportImage(unsigned char* pixelData, int width,int height, QString archivoSalida){
     QImage outputImage(width, height, QImage::Format_RGB888);
 
     for (int y = 0; y < height; ++y) {
@@ -115,7 +128,7 @@ bool exportImage(unsigned char* pixelData, int width, int height, QString archiv
     }
 }
 
-unsigned int* loadSeedMasking(const char* nombreArchivo, int &seed, int &n_pixels) {
+unsigned int* loadSeedMasking(const char* nombreArchivo, int &seed, int &n_pixels){
     ifstream archivo(nombreArchivo);
     if (!archivo.is_open()) {
         cout << "No se pudo abrir el archivo." << endl;
@@ -164,4 +177,8 @@ unsigned char* xorImages(unsigned char* img1, unsigned char* img2, int totalByte
     }
 
     return result;
+}
+
+unsigned char rotarDerecha(unsigned char byte, int n) {
+    return (byte >> n) | (byte << (8 - n));
 }
