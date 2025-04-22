@@ -6,33 +6,27 @@
 using namespace std;
 
 unsigned char* loadPixels(QString input, int &width, int &height);
-bool exportImage(unsigned char* pixelData, int width,int height, QString archivoSalida);
+bool exportImage(unsigned char* pixelData, int width, int height, QString archivoSalida);
 unsigned int* loadSeedMasking(const char* nombreArchivo, int &seed, int &n_pixels);
 unsigned char* xorImages(unsigned char* img1, unsigned char* img2, int totalBytes);
-unsigned char rotarDerecha(unsigned char byte, int n);
+void rotateRightBits(unsigned char* data, int totalBytes, int bits);
 
-int main()
-{
+int main() {
     QString archivoEntrada = "I_O.bmp";
+    QString archivoDistorsion = "I_M.bmp";
     QString archivoSalida = "I_D.bmp";
 
-    int height = 0;
-    int width = 0;
-
+    int width = 0, height = 0;
     unsigned char *pixelData = loadPixels(archivoEntrada, width, height);
     if (pixelData == nullptr) {
-        cout << "No se pudo cargar la imagen original." << endl;
+        cout << "No se pudo cargar la imagen I_O.bmp." << endl;
         return -1;
     }
 
-    // Cargar imagen de distorsión (I_M.bmp)
-    QString archivoDistorsion = "I_M.bmp";
     int width2 = 0, height2 = 0;
-    unsigned char* distortionData = loadPixels(archivoDistorsion, width2, height2);
-
-    if (width != width2 || height != height2 || distortionData == nullptr) {
-        cout << "Las imágenes no tienen las mismas dimensiones o I_M.bmp no se pudo cargar." << endl;
-        delete[] distortionData;
+    unsigned char *distortionData = loadPixels(archivoDistorsion, width2, height2);
+    if (distortionData == nullptr || width != width2 || height != height2) {
+        cout << "No se pudo cargar la imagen I_M.bmp o tiene dimensiones distintas." << endl;
         delete[] pixelData;
         return -1;
     }
@@ -41,37 +35,16 @@ int main()
     unsigned char* xorResult = xorImages(pixelData, distortionData, totalBytes);
     exportImage(xorResult, width, height, "XOR.bmp");
 
-    // Aplicar rotación de bits a la derecha (3 bits)
-    int rotacion = 3;
-    unsigned char* xorRotado = new unsigned char[totalBytes];
+    rotateRightBits(xorResult, totalBytes, 3);
+    exportImage(xorResult, width, height, "XOR_Rotada.bmp");
 
-    for (int i = 0; i < totalBytes; ++i) {
-        xorRotado[i] = rotarDerecha(xorResult[i], rotacion);
-    }
-
-    exportImage(xorRotado, width, height, "XOR_Rotada.bmp");
-
-    delete[] xorRotado;
+    delete[] pixelData;
     delete[] distortionData;
     delete[] xorResult;
 
-    // Simulación de modificación RGB artificial (puede comentarse si no se desea)
-    for (int i = 0; i < width * height * 3; i += 3) {
-        pixelData[i] = i % 256;
-        pixelData[i + 1] = i % 256;
-        pixelData[i + 2] = i % 256;
-    }
-
-    bool exportI = exportImage(pixelData, width, height, archivoSalida);
-    cout << exportI << endl;
-
-    delete[] pixelData;
-    pixelData = nullptr;
-
     int seed = 0;
     int n_pixels = 0;
-
-    unsigned int *maskingData = loadSeedMasking("M1.txt", seed, n_pixels);
+    unsigned int* maskingData = loadSeedMasking("M1.txt", seed, n_pixels);
     if (maskingData == nullptr) {
         cout << "No se pudieron cargar los datos de enmascaramiento." << endl;
         return -1;
@@ -85,15 +58,13 @@ int main()
     }
 
     delete[] maskingData;
-    maskingData = nullptr;
 
     return 0;
 }
 
-unsigned char* loadPixels(QString input, int &width, int &height){
+unsigned char* loadPixels(QString input, int &width, int &height) {
     QImage imagen(input);
     if (imagen.isNull()) {
-        cout << "Error: No se pudo cargar la imagen BMP." << std::endl;
         return nullptr;
     }
 
@@ -112,26 +83,19 @@ unsigned char* loadPixels(QString input, int &width, int &height){
     return pixelData;
 }
 
-bool exportImage(unsigned char* pixelData, int width,int height, QString archivoSalida){
+bool exportImage(unsigned char* pixelData, int width, int height, QString archivoSalida) {
     QImage outputImage(width, height, QImage::Format_RGB888);
 
     for (int y = 0; y < height; ++y) {
         memcpy(outputImage.scanLine(y), pixelData + y * width * 3, width * 3);
     }
 
-    if (!outputImage.save(archivoSalida, "BMP")) {
-        cout << "Error: No se pudo guardar la imagen BMP modificada.";
-        return false;
-    } else {
-        cout << "Imagen BMP modificada guardada como " << archivoSalida.toStdString() << endl;
-        return true;
-    }
+    return outputImage.save(archivoSalida, "BMP");
 }
 
-unsigned int* loadSeedMasking(const char* nombreArchivo, int &seed, int &n_pixels){
+unsigned int* loadSeedMasking(const char* nombreArchivo, int &seed, int &n_pixels) {
     ifstream archivo(nombreArchivo);
     if (!archivo.is_open()) {
-        cout << "No se pudo abrir el archivo." << endl;
         return nullptr;
     }
 
@@ -141,10 +105,9 @@ unsigned int* loadSeedMasking(const char* nombreArchivo, int &seed, int &n_pixel
         n_pixels++;
     }
     archivo.close();
-    archivo.open(nombreArchivo);
 
+    archivo.open(nombreArchivo);
     if (!archivo.is_open()) {
-        cout << "Error al reabrir el archivo." << endl;
         return nullptr;
     }
 
@@ -159,15 +122,11 @@ unsigned int* loadSeedMasking(const char* nombreArchivo, int &seed, int &n_pixel
     }
 
     archivo.close();
-    cout << "Semilla: " << seed << endl;
-    cout << "Cantidad de píxeles leídos: " << n_pixels << endl;
-
     return RGB;
 }
 
 unsigned char* xorImages(unsigned char* img1, unsigned char* img2, int totalBytes) {
     if (img1 == nullptr || img2 == nullptr) {
-        std::cout << "Error: una o ambas imágenes son nulas." << std::endl;
         return nullptr;
     }
 
@@ -179,6 +138,9 @@ unsigned char* xorImages(unsigned char* img1, unsigned char* img2, int totalByte
     return result;
 }
 
-unsigned char rotarDerecha(unsigned char byte, int n) {
-    return (byte >> n) | (byte << (8 - n));
+void rotateRightBits(unsigned char* data, int totalBytes, int bits) {
+    for (int i = 0; i < totalBytes; ++i) {
+        unsigned char byte = data[i];
+        data[i] = (byte >> bits) | (byte << (8 - bits));
+    }
 }
