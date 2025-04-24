@@ -140,7 +140,7 @@ bool detectarOperacion(unsigned char* imagenActual, const unsigned char* referen
 int main(int argc, char *argv[]) {
     QCoreApplication a(argc, argv);
 
-    QString basePath = "C:/Users/aleja/OneDrive/Documentos/DESAFIO1_2025-1/Desafio_1/build/Desktop_Qt_6_9_0_MinGW_64_bit-Debug/";
+    QString basePath = "C:/Users/gutierrezm/Documents/DESAFIO1_2025-1/Desafio_1/build/Desktop_Qt_6_9_0_MinGW_64_bit-Debug/";
     QString archivoEntrada1 = basePath + "I_O.bmp";
     QString archivoEntrada2 = basePath + "I_M.bmp";
     QString archivoMascara  = basePath + "M.bmp";
