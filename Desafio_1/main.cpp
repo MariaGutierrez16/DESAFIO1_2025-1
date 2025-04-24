@@ -1,170 +1,217 @@
-#include <fstream>
-#include <iostream>
 #include <QCoreApplication>
 #include <QImage>
+#include <QString>
+#include <fstream>
+#include <iostream>
 
 using namespace std;
 
-unsigned char* loadPixels(QString input, int &width, int &height);
-bool exportImage(unsigned char* pixelData, int width, int height, QString archivoSalida);
-unsigned int* loadSeedMasking(const char* nombreArchivo, int &seed, int &n_pixels);
-unsigned char* xorImages(unsigned char* img1, unsigned char* img2, int totalBytes);
-unsigned char* rotateBits(unsigned char* imageData, int totalBytes, int bits);
-
-int main()
-{
-    QString archivoEntrada = "I_M.bmp";  // Imagen original
-    QString archivoSalida = "I_D.bmp";   // Imagen modificada
-
-    int height = 0;
-    int width = 0;
-
-    unsigned char *pixelData = loadPixels(archivoEntrada, width, height);
-    if (pixelData == nullptr) {
-        cout << "No se pudo cargar la imagen original." << endl;
-        return -1;
-    }
-
-    // Cargar segunda imagen: imagen de distorsión (IM.bmp)
-    QString archivoDistorsion = "IM.bmp";
-    int width2 = 0, height2 = 0;
-    unsigned char* distortionData = loadPixels(archivoDistorsion, width2, height2);
-
-    if (width != width2 || height != height2 || distortionData == nullptr) {
-        cout << "Las imágenes no tienen las mismas dimensiones o IM.bmp no se pudo cargar." << endl;
-        delete[] distortionData;
-        delete[] pixelData;
-        return -1;
-    }
-
-    int totalBytes = width * height * 3;
-    unsigned char* xorResult = xorImages(pixelData, distortionData, totalBytes);
-    exportImage(xorResult, width, height, "XOR.bmp");
-
-    // Aplicar rotación de bits a la derecha (8 bits)
-    unsigned char* rotatedResult = rotateBits(xorResult, totalBytes, 8);  // Rotar 8 bits
-    exportImage(rotatedResult, width, height, "XOR_Rotada_8bits.bmp");
-
-    delete[] distortionData;
-    delete[] xorResult;
-    delete[] rotatedResult;
-
-    // Cargar y procesar los datos de enmascarado de M1.txt
-    int seed = 0;
-    int n_pixels = 0;
-    unsigned int *maskingData = loadSeedMasking("M1.txt", seed, n_pixels);
-    if (maskingData == nullptr) {
-        cout << "No se pudieron cargar los datos de enmascaramiento." << endl;
-        return -1;
-    }
-
-    // Simulación de visualización de datos de enmascarado
-    for (int i = 0; i < n_pixels * 3; i += 3) {
-        cout << "Pixel " << i / 3 << ": ("
-             << maskingData[i] << ", "
-             << maskingData[i + 1] << ", "
-             << maskingData[i + 2] << ")" << endl;
-    }
-
-    delete[] maskingData;
-    maskingData = nullptr;
-
-    return 0;
+unsigned char* loadPixels(QString input, int &width, int &height) {
+    QImage image(input);
+    if (image.isNull()) return nullptr;
+    QImage img = image.convertToFormat(QImage::Format_RGB888);
+    width = img.width();
+    height = img.height();
+    int size = width * height * 3;
+    unsigned char* pixels = new unsigned char[size];
+    memcpy(pixels, img.bits(), size);
+    return pixels;
 }
 
-unsigned char* loadPixels(QString input, int &width, int &height){
-    QImage imagen(input);
-    if (imagen.isNull()) {
-        cout << "Error: No se pudo cargar la imagen BMP." << std::endl;
-        return nullptr;
-    }
-
-    imagen = imagen.convertToFormat(QImage::Format_RGB888);
-    width = imagen.width();
-    height = imagen.height();
-    int dataSize = width * height * 3;
-    unsigned char* pixelData = new unsigned char[dataSize];
-
-    for (int y = 0; y < height; ++y) {
-        const uchar* srcLine = imagen.scanLine(y);
-        unsigned char* dstLine = pixelData + y * width * 3;
-        memcpy(dstLine, srcLine, width * 3);
-    }
-
-    return pixelData;
+bool exportImage(unsigned char* pixelData, int width, int height, QString archivoSalida) {
+    QImage image(pixelData, width, height, QImage::Format_RGB888);
+    return image.save(archivoSalida);
 }
 
-bool exportImage(unsigned char* pixelData, int width, int height, QString archivoSalida){
-    QImage outputImage(width, height, QImage::Format_RGB888);
+bool validarConArchivoDeSuma(const unsigned char* imagen, const unsigned char* mascara, int anchoImg, int altoImg, const QString& archivoSuma, int anchoMascara, int altoMascara) {
+    ifstream archivo(archivoSuma.toStdString());
+    if (!archivo.is_open()) return false;
+    int semilla;
+    archivo >> semilla;
+    int totalPixelesMascara = anchoMascara * altoMascara * 3;
+    int limite = anchoImg * altoImg * 3;
+    if (semilla + totalPixelesMascara > limite) return false;
+    for (int i = 0; i < totalPixelesMascara; i += 3) {
+        int r_sum, g_sum, b_sum;
+        if (!(archivo >> r_sum >> g_sum >> b_sum)) return false;
+        int idx = semilla + i;
+        int r_calc = imagen[idx] + mascara[i];
+        int g_calc = imagen[idx + 1] + mascara[i + 1];
+        int b_calc = imagen[idx + 2] + mascara[i + 2];
+        if (r_calc != r_sum || g_calc != g_sum || b_calc != b_sum) return false;
+    }
+    return true;
+}
 
-    for (int y = 0; y < height; ++y) {
-        memcpy(outputImage.scanLine(y), pixelData + y * width * 3, width * 3);
+void aplicarXOR(unsigned char* out, const unsigned char* img1, const unsigned char* img2, int size) {
+    for (int i = 0; i < size; i++) out[i] = img1[i] ^ img2[i];
+}
+
+void desplazamientoIzquierda(unsigned char* out, const unsigned char* in, int size, int bits) {
+    for (int i = 0; i < size; i++) out[i] = (in[i] << bits) & 0xFF;
+}
+
+void desplazamientoDerecha(unsigned char* out, const unsigned char* in, int size, int bits) {
+    for (int i = 0; i < size; i++) out[i] = (in[i] >> bits);
+}
+
+void rotacionIzquierda(unsigned char* out, const unsigned char* in, int size, int bits) {
+    for (int i = 0; i < size; i++) out[i] = ((in[i] << bits) | (in[i] >> (8 - bits))) & 0xFF;
+}
+
+void rotacionDerecha(unsigned char* out, const unsigned char* in, int size, int bits) {
+    for (int i = 0; i < size; i++) out[i] = ((in[i] >> bits) | (in[i] << (8 - bits))) & 0xFF;
+}
+
+void generarArchivoSuma(const unsigned char* imagen, const unsigned char* mascara, int anchoImg, int altoImg, int anchoMascara, int altoMascara, int semilla, const QString& rutaSalida) {
+    ofstream archivo(rutaSalida.toStdString());
+    if (!archivo.is_open()) {
+        cout << "No se pudo abrir el archivo para escritura." << endl;
+        return;
     }
 
-    if (!outputImage.save(archivoSalida, "BMP")) {
-        cout << "Error: No se pudo guardar la imagen BMP modificada." << endl;
-        return false;
-    } else {
-        cout << "Imagen BMP modificada guardada como " << archivoSalida.toStdString() << endl;
+    archivo << semilla << endl;
+    int total = anchoMascara * altoMascara * 3;
+    int limite = anchoImg * altoImg * 3;
+    if (semilla + total > limite) {
+        cout << "Error: la semilla + mascara excede el tamano de la imagen." << endl;
+        return;
+    }
+
+    for (int i = 0; i < total; i += 3) {
+        int idx = semilla + i;
+        int r = imagen[idx] + mascara[i];
+        int g = imagen[idx + 1] + mascara[i + 1];
+        int b = imagen[idx + 2] + mascara[i + 2];
+        archivo << r << " " << g << " " << b << endl;
+    }
+
+    archivo.close();
+    cout << "Archivo generado exitosamente en: " << rutaSalida.toStdString() << endl;
+}
+
+bool detectarOperacion(unsigned char* imagenActual, const unsigned char* referencia, const unsigned char* mascara, int width, int height, int widthM, int heightM, const QString& archivoSuma, QString& operacionDetectada) {
+    int size = width * height * 3;
+    unsigned char* transformada = new unsigned char[size];
+
+    aplicarXOR(transformada, imagenActual, referencia, size);
+    if (validarConArchivoDeSuma(transformada, mascara, width, height, archivoSuma, widthM, heightM)) {
+        memcpy(imagenActual, transformada, size);
+        operacionDetectada = "XOR";
+        delete[] transformada;
         return true;
     }
+
+    for (int b = 2; b <= 8; b++) {
+        desplazamientoIzquierda(transformada, imagenActual, size, b);
+        if (validarConArchivoDeSuma(transformada, mascara, width, height, archivoSuma, widthM, heightM)) {
+            memcpy(imagenActual, transformada, size);
+            operacionDetectada = "desplazamiento izquierda " + QString::number(b) + " bits";
+            delete[] transformada;
+            return true;
+        }
+        desplazamientoDerecha(transformada, imagenActual, size, b);
+        if (validarConArchivoDeSuma(transformada, mascara, width, height, archivoSuma, widthM, heightM)) {
+            memcpy(imagenActual, transformada, size);
+            operacionDetectada = "desplazamiento derecha " + QString::number(b) + " bits";
+            delete[] transformada;
+            return true;
+        }
+        rotacionIzquierda(transformada, imagenActual, size, b);
+        if (validarConArchivoDeSuma(transformada, mascara, width, height, archivoSuma, widthM, heightM)) {
+            memcpy(imagenActual, transformada, size);
+            operacionDetectada = "rotacion izquierda " + QString::number(b) + " bits";
+            delete[] transformada;
+            return true;
+        }
+        rotacionDerecha(transformada, imagenActual, size, b);
+        if (validarConArchivoDeSuma(transformada, mascara, width, height, archivoSuma, widthM, heightM)) {
+            memcpy(imagenActual, transformada, size);
+            operacionDetectada = "rotacion derecha " + QString::number(b) + " bits";
+            delete[] transformada;
+            return true;
+        }
+    }
+
+    delete[] transformada;
+    return false;
 }
 
-unsigned int* loadSeedMasking(const char* nombreArchivo, int &seed, int &n_pixels){
-    ifstream archivo(nombreArchivo);
-    if (!archivo.is_open()) {
-        cout << "No se pudo abrir el archivo." << endl;
-        return nullptr;
+int main(int argc, char *argv[]) {
+    QCoreApplication a(argc, argv);
+
+    QString basePath = "C:/Users/aleja/OneDrive/Documentos/DESAFIO1_2025-1/Desafio_1/build/Desktop_Qt_6_9_0_MinGW_64_bit-Debug/";
+    QString archivoEntrada1 = basePath + "I_O.bmp";
+    QString archivoEntrada2 = basePath + "I_M.bmp";
+    QString archivoMascara  = basePath + "M.bmp";
+    QString archivoM2       = basePath + "M2.txt";
+    QString archivoM1       = basePath + "M1.txt";
+    QString archivoSalida   = basePath + "reconstruida.bmp";
+
+    int width1, height1, width2, height2, widthM, heightM;
+
+    unsigned char* img1 = loadPixels(archivoEntrada1, width1, height1);
+    unsigned char* img2 = loadPixels(archivoEntrada2, width2, height2);
+    unsigned char* mascara = loadPixels(archivoMascara, widthM, heightM);
+    if (!img1 || !img2 || !mascara) return -1;
+
+    int size = width1 * height1 * 3;
+
+    // Paso 1: rotación derecha a partir de img1
+    unsigned char* imagenTransformada = new unsigned char[size];
+    rotacionDerecha(imagenTransformada, img1, size, 3);
+    int semillaM2 = 15;
+    QString archivoM2Generado = basePath + "M2_generado.txt";
+    generarArchivoSuma(imagenTransformada, mascara, width1, height1, widthM, heightM, semillaM2, archivoM2Generado);
+
+    // Paso 2: aplicar XOR con img2 sobre imagenTransformada
+    unsigned char* imagenTransformada2 = new unsigned char[size];
+    aplicarXOR(imagenTransformada2, imagenTransformada, img2, size);
+    int semillaM1 = 30;
+    QString archivoM1Generado = basePath + "M1_generado.txt";
+    generarArchivoSuma(imagenTransformada2, mascara, width1, height1, widthM, heightM, semillaM1, archivoM1Generado);
+
+    // Proceso de detección
+    unsigned char* imagenActual = new unsigned char[size];
+    memcpy(imagenActual, img1, size);
+
+    QString opM2, opM1;
+
+    if (detectarOperacion(imagenActual, imagenTransformada, mascara, width1, height1, widthM, heightM, archivoM2Generado, opM2)) {
+        cout << "Operacion detectada para M2: " << opM2.toStdString() << endl;
+
+        if (detectarOperacion(imagenActual, img2, mascara, width1, height1, widthM, heightM, archivoM1Generado, opM1)) {
+            cout << "Operacion detectada para M1: " << opM1.toStdString() << endl;
+
+            exportImage(imagenActual, width1, height1, archivoSalida);
+            cout << "La imagen ID.bmp fue modificada." << endl;
+            cout << "Imagen reconstruida exportada exitosamente." << endl;
+
+            ifstream archivoSemilla(archivoM1Generado.toStdString());
+            if (archivoSemilla.is_open()) {
+                int semilla;
+                archivoSemilla >> semilla;
+                cout << "Semilla M1: " << semilla << endl;
+                int r, g, b;
+                int contador = 0;
+                while (archivoSemilla >> r >> g >> b && contador < 5) {
+                    cout << "RGB suma " << contador << ": (" << r << ", " << g << ", " << b << ")" << endl;
+                    contador++;
+                }
+            }
+        } else {
+            cout << "No se detecto operacion valida para M1." << endl;
+        }
+    } else {
+        cout << "No se detecto operacion valida para M2." << endl;
     }
 
-    archivo >> seed;
-    int r, g, b;
-    while (archivo >> r >> g >> b) {
-        n_pixels++;
-    }
-    archivo.close();
-    archivo.open(nombreArchivo);
+    delete[] img1;
+    delete[] img2;
+    delete[] mascara;
+    delete[] imagenActual;
+    delete[] imagenTransformada;
+    delete[] imagenTransformada2;
 
-    if (!archivo.is_open()) {
-        cout << "Error al reabrir el archivo." << endl;
-        return nullptr;
-    }
-
-    unsigned int* RGB = new unsigned int[n_pixels * 3];
-    archivo >> seed;
-
-    for (int i = 0; i < n_pixels * 3; i += 3) {
-        archivo >> r >> g >> b;
-        RGB[i] = r;
-        RGB[i + 1] = g;
-        RGB[i + 2] = b;
-    }
-
-    archivo.close();
-    cout << "Semilla: " << seed << endl;
-    cout << "Cantidad de píxeles leídos: " << n_pixels << endl;
-
-    return RGB;
-}
-
-unsigned char* xorImages(unsigned char* img1, unsigned char* img2, int totalBytes) {
-    if (img1 == nullptr || img2 == nullptr) {
-        std::cout << "Error: una o ambas imágenes son nulas." << std::endl;
-        return nullptr;
-    }
-
-    unsigned char* result = new unsigned char[totalBytes];
-    for (int i = 0; i < totalBytes; ++i) {
-        result[i] = img1[i] ^ img2[i];
-    }
-
-    return result;
-}
-
-unsigned char* rotateBits(unsigned char* imageData, int totalBytes, int bits) {
-    unsigned char* rotatedData = new unsigned char[totalBytes];
-    for (int i = 0; i < totalBytes; ++i) {
-        rotatedData[i] = (imageData[i] >> bits) | (imageData[i] << (8 - bits));
-    }
-    return rotatedData;
+    return 0;
 }
